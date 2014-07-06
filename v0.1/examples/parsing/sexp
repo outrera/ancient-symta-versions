@@ -1,0 +1,11 @@
+/* Parser for symbolic expressions
+   Usage: parseSexp "(say (sqrt PI))" | eval
+   */
+ws Xs -> all \Space Xs
+rest [\Space @ws E:@sexp Es:@rest] -> [E @(Es!='nil && Es)]
+    ;[]->'nil; [@ws]->'nil
+xs Xs -> rest [\Space @Xs]
+sexp [Xs:_++!digit?] -> asBase 10 Xs,asStr
+    ;[Xs:_++!alpha?] -> asSym Xs
+    ;[\( @ws Es:@xs \)] -> Es
+parseSexp X -> sexp X,asList

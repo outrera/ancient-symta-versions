@@ -1,0 +1,34 @@
+KeyLimit -> 2
+numKeys N -> (N,len-1)/2
+
+search K [A [Key Value] B @Rest] ->   // Retrieve value from B-tree
+  cnd {K == Key -> Value              // found
+      ;K  < Key -> search K A         // descend a
+      ;Rest     -> search K [B@Rest]  // advance current node
+      ;y        -> search K B}        // descend b
+
+// Insert or replace value in a persistent, balanced B-tree
+// path-copying method
+insert K V Tree -> descendTree K V [] Tree
+
+forkPath P T ->
+  M:(T,len-1)/2 // middle [Key Value] pair
+  updatePath P [(take M-1 T) T,M (drop M+1 T)]
+
+ascendPath P T -> // run path backwards, compiling new tree
+  P,{ default  -> T // we are done
+    ;[[N I]@P] -> ascendPath P (set T,I N)}
+
+updatePath P T:[A [K V] B] -> // uppdate and balance
+  P,{ default  -> T
+    ;[[N I]@P] -> T:(lcng I T N)
+                  T,numKeys <= KeyLimit |> ascendPath P T :: forkPath P T}
+
+advanceNode K V P N I [A [Key Value] B @Rest] ->
+  cnd {K == Key -> ascendPath [[N I]@P] [K V]
+      ;K  < Key -> descendTree K V [[N I-1]@P] A
+      ;Rest     -> advanceNode K V P N I+2 [B@Rest]
+      ;y        -> descendTree K V [[N I+1]@P] B}
+
+descendTree K V P T -> T |> advanceNode K V P T 1 T :: updatePath P [n [K V] n]
+

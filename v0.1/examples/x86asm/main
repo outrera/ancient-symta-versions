@@ -1,0 +1,198 @@
+/* X86 disassembler
+
+Usage: x86deasm [#x8b #x04 #x9b] Mode=32
+
+ FIXME: find maximum x86-instruction size for padding.
+ FIXME: x86 sucks and must be eliminated.
+
+
+ FIXME:
+    ;'d   -> [v:@U4 @bs]:bs decArg [@rs v] as bs i
+    ;'w   -> [v:@U2 @bs]:bs decArg [@rs v] as bs i
+    ;'b   -> [v:@U1 @bs]:bs decArg [@rs v] as bs i
+
+    I,oprSz,{4->[V:@u4 @Bs]:Bs decArg [@Rs V] As Bs I
+            ;_->[V:@u2 @Bs]:Bs decArg [@Rs V] As Bs I}
+
+           ;1 -> [S.disp:@s1 @Bs]:Bs decSib2 S As Bs I
+           ;2 -> [S.disp:@s2 @Bs]:Bs decSib2 S As Bs I
+
+    should be replaced with something like 
+    Bs,{[V:@(u I,oprSz) @Bs] -> decArg [@Rs V] As Bs I}
+
+
+($eval "words \"8b 04 9b b8 01 00 00 00\" | asBase 16 | x86deasm")
+
+*/
+
+
+load "examples/x86ops"
+
+
+PSib -> [sib=y seg='DS scale=1 disp=0]
+
+oprSz I -> I.mode == 16 |> (I.oprovr? |> 4::2) :: (I.oprovr? |> 2::4)
+adrSz I -> I.mode == 16 |> (I.adrovr? |> 4::2) :: (I.adrovr? |> 2::4)
+
+regArg? A -> bfnd A '(AH  BH  CH  CS  DH DS ES FLG FS GS SS eAX eBP eBX eCX
+                      eDI eDX eSI eSP)
+
+extendedReg? A -> bfnd A '(eAX eBP eBX eCX eDI eDX eSI eSP)
+
+GPRs -> '(eAX eCX eDX eBX eSP eBP eSI eDI)
+Segs -> '( ES  CS  SS  DS  FS  GS eSI eDI)
+CRs  -> '(CR0 CR1 CR2 CR3 CR4 CR5 CR6 CR7) // control regs
+TRs  -> '(TR0 TR1 TR2 TR3 TR4 TR5 TR6 TR7) // test regs
+DRs  -> '(DR0 DR1 DR2 DR3 DR4 DR5 DR6 DR7) // debug regs
+MMs  -> '(MM0 MM1 MM2 MM3 MM4 MM5 MM6 MM7) // mmx regs
+XMs  -> '(XM0 XM1 XM2 XM3 XM4 XM5 XM6 XM7) // sse regs
+
+SIBs -> '((DS eSI eBX) (DS eDI eBX) (DS eSI eBP) (DS eDI eBP)
+          (DS n   eSI) (DS n   eDI) (SS n   eBP) (DS n   eBX))
+
+gprTo16bit 'eAX->'AX; 'eCX->'CX; 'eDX->'DX; 'eBX->'BX
+          ;'eSP->'SP; 'eBP->'BP; 'eSI->'SI; 'eDI->'DI
+
+decSib4disp S Rs As Bs I -> [S.disp:@s4 @Bs]:Bs decArg [@Rs S] As Bs I
+
+decSib4 S Rs As Bs I ->
+  I.MOD,{0 -> I.RM==5 |> decSib4disp S Rs As Bs I :: decArg [@Rs S] As Bs I
+        ;1 -> [V:@s1 @Bs]:Bs S.disp:V S.base:S.base,gprTo16bit
+              decArg [@Rs S] As Bs I
+        ;2 -> decSib4disp S Rs As Bs I
+        ;3 -> decArg [@Rs S] As Bs I}
+
+decSibByte Rs As [B@Bs] I
+ -> S:[@PSib scale=1<<(ldb 6 2 B) index=GPRs,(ldb 3 3 B) base=GPRs,(ldb 0 3 B)]
+ -> I.MOD == 0 && S.base == 'eBP |> S.base =: n
+ -> S.index == 'eSP |> [@!S index=n scale=1]
+ -> decSib4 S Rs As Bs I
+
+decSib2 S Rs As Bs I -> [S.seg S.index S.base]:SIBs,(I.RM)
+                        decArg [@Rs S] As Bs I
+
+decMem P S Rs As Bs I -> S:PSib I,oprSz == 4
+  |> I.RM,{4->decSibByte Rs As Bs I
+          ;_->decSib4 [@S base=(I.MOD!=0||I.RM!=5 |> GPRs,(I.REG))] Rs As Bs I}
+  :: I.MOD,{0 -> I.RM == 6 |> [S.disp:@s2 @Bs]:Bs decArg [@Rs S] As Bs I
+                           :: decSib2 S Rs As Bs I
+           ;1 -> [S.disp:@s1 @Bs]:Bs decSib2 S As Bs I
+           ;2 -> [S.disp:@s2 @Bs]:Bs decSib2 S As Bs I
+           ;3 -> decArg [@Rs S] As Bs I}
+
+
+decImm S Rs As Bs I ->
+  S,{'v   -> I,oprSz,{4->[V:@u4 @Bs]:Bs decArg [@Rs V] As Bs I
+                     ;_->[V:@u2 @Bs]:Bs decArg [@Rs V] As Bs I}
+    ;'d   -> [V:@u4 @Bs]:Bs decArg [@Rs v] As Bs I
+    ;'w   -> [V:@u2 @Bs]:Bs decArg [@Rs v] As Bs I
+    ;'b   -> [V:@u1 @Bs]:Bs decArg [@Rs v] As Bs I
+    ;'s   -> error "decImm: unexpected type `$s`"
+    ;'p   -> I,oprSz,{4->[Seg:@u2 V:@u4 @Bs]:Bs decArg [@Rs[Seg*16 V]] As Bs I
+                     ;_->[Seg:@u2 V:@u2 @Bs]:Bs decArg [@Rs[Seg*16 V]] As Bs I}
+    ;'a   -> I,adrSz,{4 ->decArg [@Rs (take 8 Bs)] As (drop 8 Bs) I
+                     ;_ ->decArg [@Rs (take 4 Bs)] As (drop 4 Bs) I}
+    ;'dq  -> decArg [@Rs (take 16 Bs)] As (drop 16 Bs) I
+    ;'q   -> decArg [@Rs (take  8 Bs)] As (drop  8 Bs) I
+    ;'ss  -> error "decImm: unexpected type `$s`"
+    ;'ps  -> decArg [@Rs (take 16 Bs)] As (drop 16 Bs) I
+    ;'pi  -> error "decImm: unexpected type `$s`"
+    ;'c   -> i,oprSz,{4 ->[V:@u2 @Bs]:Bs decArg [@Rs V] As Bs I
+                     ;_ ->[V     @Bs]:Bs decArg [@Rs V] As Bs I}
+    ;'si  -> error "decImm: unexpected type `$s`"
+    ; _   -> error "decImm: invalid imm type"}
+
+decOff Rs As Bs I ->
+  I,adrSz,{4 -> [V:@u4 @Bs]:Bs decArg [@Rs V] As Bs I
+          ;_ -> [V:@u2 @Bs]:Bs decArg [@Rs V] As Bs I}
+
+normalizeReg X
+ -> X,{extendedReg? -> X,gprTo16bit
+      ;fin?  -> X
+      ;?.sib -> [@R index=X.index,r base=X.base,r]}
+
+normalizeRegs I -> I,oprSz==4 |> I :: [@I args=(map normalizeReg I.args)]
+
+decArg Rs As Bs I:[bytes=D]
+ -> normalizeRegs [@I args=Rs bytes=(take D,len-Bs,len D)]
+
+A.decArg Rs [[P S]@As] Bs I ->
+  P,{regArg? -> decArg [@Rs P] As Bs I
+    ;'G -> decArg [@Rs GPRs,(I.REG)] As Bs I
+    ;'R -> decArg [@Rs GPRs,(I.RM )] As Bs I
+    ;'M -> decMem P S Rs As Bs I
+    ;'I -> decImm S Rs As Bs I
+    ;'J -> decImm S Rs As Bs I
+    ;'S -> decArg [@Rs Segs,(I.REG)] As Bs I
+    ;'O -> decOff Rs As Bs I
+    ;'A -> decImm S Rs As Bs I
+    ;'E -> I.MOD==3 |> decArg [@Rs GPRs,(I.RM)] As Bs I :: decMem P S Rs As Bs I
+    ;'W -> I.MOD==3 |> decArg [@Rs  XMs,(I.RM)] As Bs I :: decMem P S Rs As Bs I
+    ;'Q -> I.MOD==3 |> decArg [@Rs  MMs,(I.RM)] As Bs I :: decMem P S Rs As Bs I
+    ;'V -> decArg [@Rs XMs,(I.REG)] As Bs I
+    ;'P -> decArg [@Rs MMs,(I.REG)] As Bs I
+    ;'T -> decArg [@Rs TRs,(I.REG)] As Bs I
+    ;'C -> decArg [@Rs CRs,(I.REG)] As Bs I
+    ;'D -> decArg [@Rs DRs,(I.REG)] As Bs I
+    ;default -> decArg [@Rs P] As Bs I}
+
+decArgs Bs I -> decArg Rs I.form.args Bs I
+
+mergeArgs [oP oS] [nP nS] -> [(nP||oP) (nS||oS)]
+mergeForms Old New -> OA:Old.args NA:New.args
+  keep y? [(mergeArgs OA,0 NA,0) (mergeArgs OA,1 NA,1) (mergeArgs OA,2 NA,2)]
+  | set Old.args
+
+decGrpL N Bs I
+ -> mergeForms I.form X86opsExt1,(or N<<3 I.REG) | set I.form | decArgs Bs
+
+
+decGrpH N Bs I ->
+ I.MOD.{3-> mergeForms I.form X86opsExt2,(or N I.REG) | set I.form | decArgs Bs
+       ;_-> decGrpH N Bs I}
+
+decExt Bs I -> C:I.form.cmd
+  C,{['grp N] -> N<9 |> decGrpL N Bs I :: decGrpH N Bs I
+    ;default  -> decArgs Bs I}
+
+decMODRM Bs I -> I.form.modrm?
+  |> [B@Bs]:Bs [I.MOD I.REG I.RM]:[(ldb 6 2 B) (ldb 3 3 B) (ldb 0 3 B)]
+     decExt Bs I
+  :: decArgs Bs I
+
+decPrefix [B@Bs] I -> O:X86ops,B
+  O.cmd,{'repne  -> decPrefix Bs     (set I.repne?  y)
+        ;'repe   -> decPrefix Bs     (set I.repe?   y)
+        ;'lock   -> decPrefix Bs     (set I.lock?   y)
+        ;'adrovr -> decPrefix Bs     (set I.adrovr? y)
+        ;'oprovr -> decPrefix Bs     (set I.oprovr? y)
+        ;'segovr -> decPrefix Bs     (set I.seg     O.args.lhd)
+        ;'x86ops -> decMODRM  Bs.ltl (set I.form    X86ops0F,(lhd Bs))
+        ;default -> decMODRM  Bs     (set I.form    O)}
+
+x86decode1 Bs Mode=32 -> decPrefix Bs [bytes=Bs mode=Mode]
+
+x86decode Bs Mode=32 -> with [] Bs
+  {Ys [@Bs] -> Is:(Bs,len > 20 |> Bs :: [@Bs 20++90]) // pad with NOPs
+               I:(x86decode1 Is Mode=Mode)
+               I.form.cmd |> r [@Ys I] (drop I.bytes,len Bs) :: Ys
+  ;Ys   _   -> Ys}
+
+deasmSib X
+ -> Seg :X.seg,downcase   Scale:X.scale  Index:X.index,downcase
+    Base:X.base,downcase  Disp :X.disp   R:Index
+    R:(R && X.scale != 1 |> `#` $Scale*$R :: R)
+    R:(R |> (Base |> `#` $Base+$R :: R) :: Base)
+    R:(R |> (Disp!=0 |> `#` $Disp+$R :: R) :: Disp)
+    R:#[$R]
+    R:(Seg == 'ds |> R :: `#` $Seg:$R)
+    R
+
+deasmArg X:sym?  -> X,downcase
+        ;X:fin?  -> X
+        ;X:?.sib -> X,deasmSib
+
+x86deasm1 I -> [I.form.cmd @(map deasmArg I.args)]
+
+x86deasm Bs Mode=32 -> x86decode Bs Mode=Mode | map x86deasm1
+

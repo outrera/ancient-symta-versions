@@ -1,0 +1,9 @@
+/* Parser for infix expressions
+   Usage: parse "2*(3+4)" | eval */
+digit X:{\0;\1;\2;\3;\4;\5;\6;\7;\8;\9} -> X,asInt-(\0),asInt
+number [@Xs] -> {N [X:!digit @Xs] -> r 10N+X Xs; N [] -> N} 0 Xs
+op [X:{\+; \-; \*; \/}]->X,asSym
+term [\( A:@expr \)]->[A]; [A:@number]->A
+expr [A:@term O:@op B:@expr]->[O A B]; [A:@term]->A
+parse X -> strip \Space X,asList | expr
+

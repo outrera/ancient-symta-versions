@@ -1,0 +1,5 @@
+yoba
+  -> Ns:["foo" "bar" "baz"]
+  -> {-> "$(rand Ns)($([3,rand+1++"$(rand [y n] |> rand Ns :: r)"]
+                       | infix "," | fold sconc))"}
+

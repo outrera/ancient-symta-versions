@@ -1,0 +1,1021 @@
+/*
+  TRANSFER PLACES:
+  ----------------
+  A  direct address, as immediate value (depends on address size mode)
+  C  modrm.reg selects control register
+  D  modrm.reg selects debug register
+  E  modrm.rm specifies operand - gpr or memory(sib)
+  G  modrm.reg selects gp register
+  I  operand is immediate, that follows opcode
+  J  operand is signed immediate offset, that is to be added to IP
+  M  modrm.rm may only refer to memory
+  O  absolute offset of operand follows instruction
+  P  modrm.reg selects MMX register
+  Q  modrm.rm specifies operand - MMX register or memory(sib)
+  R  modrm.rm may only refer to gpr
+  S  modrm.reg selects segment register
+  T  modrm.reg selects test register
+  V  modrm.reg selects XMM register
+  W  modrm.rm specifies operand - XMM register or memory(sib)
+  X  memory adressed by DS:SI pair
+  Y  memory adressed by ES:DI pair
+  F  flags register
+
+  TRANSFER SIZES:
+  ---------------
+  b   byte
+  w   2-byte word
+  d   4-byte word
+  q   8-byte word
+  dq  16-byte word
+  si  32-bit integer register
+
+  c   1-byte or 2-byte, depending on mode
+  pi  8-byte MMX regiter
+  ps  16-byte, packed 4-byte floating point data
+  ss  scalar element of 16-byte packed floating point data
+  v   16-bit or 32-bit word (depending on mode)
+
+  a   two 2-byte or two 4-byte operands, based on mode
+  p   4-byte or 6-byte far pointer, based on mode
+  s   6-byte pseudo descriptor (for GDT/IDT operations)
+
+
+hint: SHLD(abc) == a<<c|(b>>(NBITSIN(b)-c))
+
+
+fmtPlace A B -> "$(fmt ~3 \Space A)|$(fmt 3 \Space B)"
+fmtX86ent #(`|` $A $B) -> fmtPlace A B
+         ;X            -> fmt 10 \Space X,asStr,downcase
+          
+fmtX86part T -> T | fe {X -> map fmtX86ent X | infix " " | ["  "@?] |
+                             fold sconc | say}
+
+fmtX86tbl T
+ -> T | grp 16
+      | {N [X@Xs] -> say "  // $(prnW1 N)-$(prnW1 N+15)"
+                  -> fmtX86part X -> say "" -> r N+16 Xs}
+        0
+
+  */
+
+
+X86ops -> "
+  // 00-0F
+  add          E:b     G:b
+  add          E:v     G:v
+  add          G:b     E:b
+  add          G:v     E:v
+
+  add        eAX:b     I:b
+  add        eAX:v     I:v
+  push        ES:v
+  pop         ES:v
+
+  or           E:b     G:b
+  or           E:v     G:v
+  or           G:b     E:b
+  or           G:v     E:v
+
+  or         eAX:b     I:b
+  or         eAX:v     I:v
+  push        CS:v
+  x86ops0f    ES:v
+
+  // 10-1F
+  adc          E:b     G:b
+  adc          E:v     G:v
+  adc          G:b     E:b
+  adc          G:v     E:v
+
+  adc        eAX:b     I:b
+  adc        eAX:v     I:v
+  push        SS:v
+  pop         SS:v
+
+  sbb          E:b     G:b
+  sbb          E:v     G:v
+  sbb          G:b     E:b
+  sbb          G:v     E:v
+
+  sbb        eAX:b     I:b
+  sbb        eAX:v     I:v
+  push        DS:v
+  pop         DS:v
+
+  // 20-2F
+  and          E:b     G:b
+  and          E:v     G:v
+  and          G:b     E:b
+  and          G:v     E:v
+
+  and        eAX:b     I:b
+  and        eAX:v     I:v
+  segovr       ES
+  daa
+
+  sub          E:b     G:b
+  sub          E:v     G:v
+  sub          G:b     E:b
+  sub          G:v     E:v
+
+  sub        eAX:b     I:b
+  sub        eAX:v     I:v
+  segovr       CS
+  das
+
+  // 30-3F
+  xor          E:b     G:b
+  xor          E:v     G:v
+  xor          G:b     E:b
+  xor          G:v     E:v
+
+  xor        eAX:b     I:b
+  xor        eAX:v     I:v
+  segovr       SS
+  aaa
+
+  cmp          E:b     G:b
+  cmp          E:v     G:v
+  cmp          G:b     E:b
+  cmp          G:v     E:v
+
+  cmp        eAX:b     I:b
+  cmp        eAX:v     I:v
+  segovr       DS
+  aas
+
+  // 40-4F
+  inc        eAX:v
+  inc        eCX:v
+  inc        eDX:v
+  inc        eBX:v
+
+  inc        eSP:v
+  inc        eBP:v
+  inc        eSI:v
+  inc        eDI:v
+
+  dec        eAX:v
+  dec        eCX:v
+  dec        eDX:v
+  dec        eBX:v
+
+  dec        eSP:v
+  dec        eBP:v
+  dec        eSI:v
+  dec        eDI:v
+
+  // 50-5F
+  push       eAX:v
+  push       eCX:v
+  push       eDX:v
+  push       eBX:v
+
+  push       eSP:v
+  push       eBP:v
+  push       eSI:v
+  push       eDI:v
+
+  pop        eAX:v
+  pop        eCX:v
+  pop        eDX:v
+  pop        eBX:v
+
+  pop        eSP:v
+  pop        eBP:v
+  pop        eSI:v
+  pop        eDI:v
+
+  // 60-6F
+  pusha
+  popa
+  bound        G:v     M:a
+  arpl         E:w     G:w
+
+  segovr       FS
+  segovr       GS
+  oprovr
+  adrovr
+
+  push         I:v
+  imul         G:v     E:v     I:v
+  push         I:b
+  imul         G:v     E:v     I:b
+
+  insb         Y:b   eDX:b
+  insv         Y:v   eDX:v
+  outs       eDX:b     X:b
+  outs       eDX:v     X:v
+
+  // 70-7F
+  jo           J:b
+  jno          J:b
+  jb           J:b
+  jae          J:b
+
+  jz           J:b
+  jnz          J:b
+  jbe          J:b
+  ja           J:b
+
+  js           J:b
+  jns          J:b
+  jp           J:b
+  jnp          J:b
+
+  jl           J:b
+  jge          J:b
+  jle          J:b
+  jg           J:b
+
+  // 80-8F
+  grp,0        E:b     I:b
+  grp,0        E:v     I:v
+  grp,0        E:b     I:b
+  grp,0        E:v     I:b
+
+  test         E:b     G:b
+  test         E:v     G:v
+  xchg         E:b     G:b
+  xchg         E:v     G:v
+
+  mov          E:b     G:b
+  mov          E:v     G:v
+  mov          G:b     E:b
+  mov          G:v     E:v
+
+  mov          E:w     S:w
+  lea          G:v     M:no
+  mov          S:w     E:w
+  pop          E:v
+
+  // 90-9F
+  nop
+  xchg       eAX:v   eCX:v
+  xchg       eAX:v   eDX:v
+  xchg       eAX:v   eBX:v
+
+  xchg       eAX:v   eSP:v
+  xchg       eAX:v   eBP:v
+  xchg       eAX:v   eSI:v
+  xchg       eAX:v   eDI:v
+
+  cbw
+  cwd
+  call         A:p  // far call
+  wait
+
+  pushf      FLG:v
+  popf       FLG:v
+  sahf
+  lahf
+
+  // A0-AF
+  mov        eAX:b     O:b
+  mov        eAX:v     O:v
+  mov          O:b   eAX:b
+  mov          O:v   eAX:v
+
+  movs         Y:b     X:b
+  movs         Y:v     X:v
+  cmps         Y:b     X:b
+  cmps         X:v     Y:v
+
+  test       eAX:b     I:b
+  test       eAX:v     I:v
+  stos         Y:b   eAX:b
+  stos         Y:v   eAX:v
+
+  lds        eAX:b     X:b
+  lds        eAX:v     X:v
+  scas       eAX:b     Y:b
+  scas       eAX:v     Y:v
+
+  // B0-BF
+  mov        eAX:b     I:b
+  mov        eAX:b     I:b
+  mov        eAX:b     I:b
+  mov        eAX:b     I:b
+
+  mov         AH:b     I:b
+  mov         CH:b     I:b
+  mov         DH:b     I:b
+  mov         BH:b     I:b
+
+  mov        eAX:v     I:v
+  mov        eCX:v     I:v
+  mov        eDX:v     I:v
+  mov        eBX:v     I:v
+
+  mov        eSP:v     I:v
+  mov        eBP:v     I:v
+  mov        eSI:v     I:v
+  mov        eDI:v     I:v
+
+  // C0-CF
+  grp,1        E:b     I:b
+  grp,1        E:v     I:b
+  ret          I:w
+  ret
+
+  les          G:v     M:p
+  lds          G:v     M:p
+  grp,10       E:b     I:b
+  grp,10       E:v     I:v
+
+  enter        I:w     I:b
+  leave
+  retf         I:w
+  retf
+
+  int          3:no
+  int          I:b
+  into
+  iret  // return from interupt
+
+  // D0-DF
+  grp,1        E:b     1:b
+  grp,1        E:v     1:b
+  grp,1        E:b   eCX:b
+  grp,1        E:v   eCX:b
+
+  aam          I:b
+  aad          I:b
+  no
+  xlat         // Table Look-up Translation
+
+  fpu,0
+  fpu,1
+  fpu,2
+  fpu,3
+
+  fpu,4
+  fpu,5
+  fpu,6
+  fpu,7
+
+  // E0-EF
+  loopnz       J:b
+  loopz        J:b
+  loop         J:b
+  jcxz         J:b
+
+  in         eAX:b     I:b
+  in         eAX:v     I:b
+  out          I:b   eAX:b
+  out          I:b   eAX:v
+
+  call         J:v
+  jmp          J:v   // near
+  jmp          A:p   // far
+  jmp          J:b   // short
+
+  in         eAX:b   eDX:w
+  in         eAX:v   eDX:w
+  out        eDX:w   eAX:b
+  out        eDX:w   eAX:v
+
+  // F0-FF
+  lock
+  n
+  repne
+  repe
+
+  hlt
+  cmc
+  grp,2        E:b
+  grp,2        E:v
+
+  clc
+  stc
+  cli
+  sti
+
+  cld
+  std
+  grp,3     // inc/dec
+  grp,4     // inc/dec
+  "
+
+
+// Secondary map for when first opcode is 0F
+// NOTE: SSE instructions use prefixes and mod/rm to extend themselves
+X86ops0F -> "
+  // 00-0F
+  grp,5
+  grp,6
+  lar          G:v     E:w
+  lsl          G:v     E:w
+
+  n
+  n
+  clts
+  n
+
+  invd
+  wbinvd
+  n
+  ud2
+
+  n
+  n
+  n
+  n
+
+
+  // 10-1F
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  grp,15
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // 20-2F
+  mov          R:d     C:d
+  mov          R:d     D:d
+  mov          C:d     R:d
+  mov          D:d     R:d
+
+  mov          R:d     T:d
+  n
+  mov          T:d     R:d
+  n
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  // 30-3F
+  wrmsr
+  rdtsc
+  rdmsr
+  rdpmc
+
+  sysenter
+  sysexit
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  movnti       G:v     E:v
+  n
+  n
+  n
+
+  // 40-4F
+  cmovo        G:v     E:v
+  cmovno       G:v     E:v
+  cmovb        G:v     E:v
+  cmovae       G:v     E:v
+
+  cmovz        G:v     E:v
+  cmovnz       G:v     E:v
+  cmovbe       G:v     E:v
+  cmova        G:v     E:v
+
+  cmovs        G:v     E:v
+  cmovns       G:v     E:v
+  cmovp        G:v     E:v
+  cmovnp       G:v     E:v
+
+  cmovl        G:v     E:v
+  cmovge       G:v     E:v
+  cmovle       G:v     E:v
+  cmovg        G:v     E:v
+
+  // 50-5F
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  // 60-6F
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  // 70-7F
+  sse
+  grp,11
+  grp,12
+  grp,13
+
+  sse
+  sse
+  sse
+  sse
+
+  mmxud
+  mmxud
+  mmxud
+  mmxud
+
+  mmxud
+  mmxud
+  sse
+  sse
+
+  // 80-8F
+  jo           J:v
+  jno          J:v
+  jb           J:v
+  jae          J:v
+
+  jz           J:v
+  jnz          J:v
+  jbe          J:v
+  ja           J:v
+
+  js           J:v
+  jns          J:v
+  jp           J:v
+  jnp          J:v
+
+  jl           J:v
+  jge          J:v
+  jle          J:v
+  jg           J:v
+
+  // 90-9F
+  seto         E:b
+  setno        E:b
+  setb         E:b
+  setae        E:b
+
+  setz         E:b
+  setnz        E:b
+  setbe        E:b
+  seta         E:b
+
+  sets         E:b
+  setns        E:b
+  setp         E:b
+  setnp        E:b
+
+  setl         E:b
+  setge        E:b
+  setle        E:b
+  setg         E:b
+
+  // A0-AF
+  push        FS:v
+  pop         FS:v
+  cpuid
+  bt           E:v     G:v
+
+  shld         E:v     G:v     I:b
+  shld         E:v     G:v   eCX:b
+  no
+  no
+
+  push        GS:v
+  pop         GS:v
+  rsm
+  bts          E:v     G:v
+
+  shrd         E:v     G:v     I:b
+  shrd         E:v     G:v   eCX:b
+  grp,14
+  imul         G:v     E:v
+
+  // B0-BF
+  cmpxchg      E:b     G:b
+  cmpxchg      E:v     G:v
+  lss          M:p
+  btr          E:v     G:v
+
+  lfs          M:p
+  lgs          M:p
+  movzx        G:v     E:b  // zero eXtended
+  movzx        G:v     E:w
+
+  n
+  grp,9
+  grp,7        E:v     I:b
+  btc          E:v     G:v
+
+  bsf          G:v     E:v
+  bsr          G:v     E:v
+  movsx        G:v     E:b  // sign eXtended
+  movsx        G:v     E:w
+
+
+  // C0-CF
+  xadd         E:b     G:b
+  xadd         E:v     G:v
+  sse
+  movnti       E:d     G:d
+
+  sse
+  sse
+  sse
+  grp,8
+
+  bswap      eAX:v
+  bswap      eCX:v
+  bswap      eDX:v
+  bswap      eBX:v
+
+  bswap      eSP:v
+  bswap      eBP:v
+  bswap      eSI:v
+  bswap      eDI:v
+
+
+  // D0-DF
+  n
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  // E0-EF
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+
+  // F0-FF
+  n
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  sse
+
+  sse
+  sse
+  sse
+  n
+  "
+
+
+// opcode map for instructions extended by modrm
+X86opsExt1 -> "
+  // Group 1
+  add
+  or
+  adc
+  sbb
+
+  and
+  sub
+  xor
+  cmp
+
+  rol
+  ror
+  rcl
+  rcr
+
+  shl
+  shr
+  n
+  sar
+
+  // Group 2
+  test
+  n
+  not
+  neg
+
+  mul        eAX:n
+  imul       eAX:n
+  div        eAX:n
+  idiv       eAX:n
+
+  inc
+  dec
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 3
+  inc
+  dec
+  call         E:v
+  call         E:p
+
+  jmp          E:v
+  jmp          E:p
+  push         E:v
+  n
+
+  sldt         E:w
+  str          E:v
+  lldt         E:w
+  ltr          E:w
+
+  verr         E:w
+  verw         E:w
+  n
+  n
+
+  // Group 4
+  sgdt         M:s
+  sidt         M:s
+  lgdt         M:s
+  lidt         M:s
+
+  smsw         E:w
+  no
+  lmsw         E:w
+  invlpg       M:b
+
+  n
+  n
+  n
+  n
+
+  bt
+  bts
+  btr
+  btc
+
+  // Group 5
+  n
+  cmpxch8b     M:q
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 6
+  mov
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 7
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 8
+  fxsave
+  fxrstor
+  ldmxcsr
+  stmxcsr
+
+  n
+  n
+  n
+  cflush
+
+  prefetchnta
+  prefetcht0
+  prefetcht1
+  prefetcht2
+
+  n
+  n
+  n
+  n
+  "
+
+
+X86opsExt2 -> "
+  // Group 8
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 9
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 10
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+
+  // Group 12
+  n
+  n
+  sse
+  n
+
+  sse
+  n
+  sse
+  n
+
+  // Group 13
+  n
+  n
+  sse
+  n
+
+  sse
+  n
+  sse
+  n
+
+  // Group 14
+  n
+  n
+  sse
+  n
+
+  sse
+  n
+  sse
+  sse
+
+  // Group 15
+  n
+  n
+  n
+  n
+
+  n
+  lfence
+  mfence
+  sfence
+
+  // Group 16
+  n
+  n
+  n
+  n
+
+  n
+  n
+  n
+  n
+  "
+
+modrmArg? [@A] -> bfnd A,0 '(C D E G M P Q R S T V W)
+
+initOpcode [C@As]
+ -> map {[X@Xs]->Xs; X->X} !As
+ -> [cmd=C args=As modrm?=(any modrmArg? As)]
+
+initOpcodeTable T -> lines T | filter st | map initOpcode
+
+initOpcodeTable !X86ops
+initOpcodeTable !X86ops0F
+initOpcodeTable !X86opsExt1
+initOpcodeTable !X86opsExt2
+
+

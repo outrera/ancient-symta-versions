@@ -1,0 +1,6 @@
+huff Xs -> Xs,sort,{[X@Xs Ys:_:@(nb X)]->[[Xs,len+1 X]@Ys,r]} | sort by=lhd
+  | {[[A X] [B Y] @Xs]->bins A+B [X Y] Xs | r; [[_ X]]->X}
+  | {Bs [A B]->[@(r [@Bs 0] A) @(r [@Bs 1] B)]; Bs X->[[X Bs]]} []
+huffEnc Xs -> Fs:(sort Xs,huff by=lhd) mapc (bget ? Fs) Xs
+huffEnc "The algorithm for generating a Huffman tree is very simple." | say
+

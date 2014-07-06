@@ -1,0 +1,28 @@
+/* take normalized sample of world point together with its neighbors */
+takeSample P World -> cut P-1 P+1 World | subst n 0
+
+/* rewrite world using axiom */
+rewrite axiom World -> map (takeSample ? World) [~1..World,len] | map axiom
+
+/* rule generator */
+rule N -> do B:(pad 8 0 N,asBits)
+             {X -> B,(X | map `*` [4 2 1] | fold `+` | `-` 7)}
+
+rewriteN N:pos? axiom World -> rewrite axiom World | rewriteN N-1 axiom
+        ;_      _     World -> World
+
+
+//for I on [1..12] say (rewriteN I (rule 30) [1])
+
+
+/*
+          {[1 1 1]->B,0
+           [1 1 0]->B,1
+           [1 0 1]->B,2
+           [1 0 0]->B,3
+           [0 1 1]->B,4
+           [0 1 0]->B,5
+           [0 0 1]->B,6
+           [0 0 0]->B,7}
+*/
+

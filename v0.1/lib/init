@@ -1,0 +1,216 @@
+m:with @Xs X -> $X $@Xs
+
+_ X -> y
+_? X -> ptrEq _ X
+
+error X -> cl error (`sq-to-str` (prn X))
+abort -> cl abort
+tag X -> cl `get-type` X
+
+bound? X -> cl boundp X
+
+prn X -> cl prn X
+
+pp X -> say X p=n
+
+load X -> cl `$load` X
+dasm X -> do (cl disassemble X) n
+
+_rng A B -> cl `as-list` (`gen-rng` A B)
+_dup N X -> cl dup N X
+
+immediate? X -> cl immediate? X
+m:_replica N X -> $@X,{immediate? -> #(_dup $N $X)
+                      ;_          -> #(_dup $N n | map &A~>$X)}
+
+// not beginning with, like ^ in regexps (use with pattern matcher)
+m:nb X -> fn (&L) (lhd &L) != $X
+
+symbolDowncase X -> X|asStr|downcase|asSym
+symbolUpcase X -> X|asStr|upcase|asSym
+sconc a b -> conc a b | asStr
+
+rev [X@Xs] -> [@Xs,rev X]
+safeMap f Xs -> Xs|[X@Xs]~>[X,f @Xs,r]
+mapc f Xs -> map f Xs | fold conc // mappend from CL
+keep P Xs -> fold {A B -> B==P |> [@A B] :: A} [[]@Xs]
+strip P Xs -> fold {A B -> B!=P |> [@A B] :: A} [[]@Xs]
+filter f Xs -> fold {A B -> f B |> [@A It] :: A} [[]@Xs]
+
+subst Src Dst L -> map {(Src)->Dst; X->X} L
+
+m:if @Body -> $@Body,{#($@T Then $@A Else $@B) -> #(_if $T $A $B)
+                     ;#($@T Then $@A         ) -> #(_if $T $A n )
+                     ;#($T       $A       $B ) -> #(_if $T $A $B)
+                     ;#($T       $A          ) -> #(_if $T $A n )
+                     ;Default                  -> error "if: syntax error"}
+
+
+//tableJoin A B by=?,0 ->
+//  fold {R X->(T:X,by keep ?,by==T B) | map [X ?] | conc R} [[]@A]
+
+// Take initial elements for which `p` is true
+takeInit P [@Xs @(nb P)] -> Xs
+
+//insert `sep` between elements of a list `l`
+//Usage: infix '+ '(a b c)
+//Example: map ?,asInt,asHex "LISP" | infix " " | fold sconc
+//TODO: add flag to create "'(+ A (+ B C))" like lists
+infix Sep L -> fold {Xs X -> [@Xs Sep X]} [(take 1 L) @L,ltl]
+
+// break list into piles of `n` items
+grp N [@Xs] -> [(take N Xs) @(drop N Xs | grp N)]
+
+/* Example1: unfold {1->n; X->[X-1 1]} 7
+   Example2: qsort Xs -> Xs |
+               unfold {[X]    -> X
+                      ;[X@Xs] -> [(keep ?<X Xs) [X] (keep ?>X Xs)]} */
+unfold f O -> f O | {[]->[O]; Xs -> mapc (unfold f ?) Xs}
+
+// counts the number of ones in the bit representation of an integer
+// use it to calculate size of bitmasks
+bitCount X -> cl logcount X
+
+// bit-length of an integer:  2^(log 2 ? | ceil)
+bitLen X -> cl `integer-length` X
+
+// inverts `bits` bits in `value` (bitwise not)
+inv Bits Value -> cl logxor (ash 1 Bits)-1 Value
+
+exp X -> cl exp X
+log Base X -> cl log X Base
+sin X -> cl sin X
+cos X -> cl cos X
+tan X -> cl tan X
+asin X -> cl asin X
+acos X -> cl acos X
+atan X -> cl atan X
+
+sum S -> fold `+` [0@S]
+prod S -> fold `*` [1@S]
+avg Xs -> Xs,sum/Xs,len
+abs X -> num? X |> cl abs X :: sqrt X*X
+norm V -> V/V,abs
+transpose V -> N:0 [V,lhd,len++(map (do I:N !N+1 ?,I) V)]
+
+rand X:y? -> num? X |> cl random X :: cl ind X (random (len X))
+randRng S E -> (abs E+1-S),rand+S
+
+// convert list to set (an ordered list that doesn't have duplicated elements)
+uniq L -> L,sort,{[@A X X @B]->[@A @[X @B],r]; E->E}
+
+// set operations
+union A B -> A,{[X@Xs]-> fnd X B |>    Xs,r  :: [x@Xs,r]; _->B}
+isect A B -> A,{[X@Xs]-> fnd X B |> [X@Xs,r] ::    Xs,r}
+diff A B -> union (strip (fnd ? B) A) (strip (fnd ? A) B)
+subsets [X@Xs] -> R:(subsets Xs||[[]]) [@R @(map [X @?] R)]
+
+
+m:ldb Pos Size Value -> with $Pos $Size $Value {P S V -> cl ldb (byte S P) V}
+
+maximize p [M@Xs]
+ -> Score:M,p fe {X -> (S:X,p) > Score |> do M=:X Score=:S} Xs
+ -> M
+
+minimize p [M@Xs]
+ -> Score:M,p fe {X -> (S:X,p) < Score |> do M=:X Score=:S} Xs
+ -> M
+
+m:while Test @Expr -> {-> $Test |> do $expr (r)}
+m:until Test @Expr -> while (n? $Test) $@Expr
+m:loop Expr -> {:&r -> do $Expr (&r)}
+
+// Usage: times i:10 say i
+m:times Head @Expr ->
+  $@(do C:Head,{#(`:` $C $N)->C; _->gensym}
+        N:Head,{#(`:` $C $N)->N; X->X     }
+        #(&E:$N 0,{:&R (&E); $C -> do $Expr (&R $C+1)}))
+
+// for (I:0; I<6; !I+1) say I
+m:for #($@V; $@C; $@I) @Body ->
+          do $@V (cl progn (while (and $@(map ['`!` ?] C))
+                             !$Body $@(map ['`!` ?] I)))
+     ; X 'on Xs @Body -> fe {$X->$@Body} $Xs
+
+// these will generate list of ascending/descending numbers
+asc Start -> seq Start (asc Start+1)
+dsc Start -> seq Start (dsc Start-1)
+
+rep X -> 0,{N -> seq X,(I:(N<X,len) |> N::0) (r I+1)}
+
+seqMap f L -> seq L,lhd,f (seqMap f L,ltl)
+seqConc A B -> A |> seq A,lhd (seqConc A,ltl B) :: b
+seqAdd A B -> seq A,lhd+B,lhd (seqAdd A,ltl B,ltl)
+
+
+words S -> split \Space S
+lines S -> split \Newline S
+flines Name -> fget Name | split \Newline,asInt | map utf8
+
+// maps values in sorted list
+bmap f Xs -> map X~>[X,0 X,1,f] Xs
+
+cnt Xs -> I:~1 map [!I+1 ?] Xs
+zip A B -> map [? ??] A B
+
+m:lpop L -> do &R:(lhd $L) (ltl !$L) &R
+
+
+GParsers -> []
+setSizeof Name Size -> GParsers.(Name) =: Size
+getParserInputSize Name -> GParsers.(Name)
+
+sizeof T:typename? -> T,getParserInputSize
+      ;#(`++` $L $T) -> S:T,sizeof S && S,int? && L,int? |> S*L :: #(`*` $S $L)
+
+
+// stuff for `++` matcher (we cant use `++` before these funs get defined)
+_matchArrayFNS N S F Xs
+ -> Xs,len%S == 0 && Xs,len/S == N |> (all y? Xs:(grp S Xs | map ?==F) |> [Xs])
+
+_matchArrayFS S F Xs
+ -> Xs,len%S == 0 |> (all y? Xs:(grp S Xs | map ?==F) |> [Xs])
+
+_matchArrayFN N f Xs -> with N [] Xs
+  {N Ys [Y:@f @Xs] -> r N-1 [@Ys Y] Xs
+  ;0 Ys []         -> [Ys]}
+
+_matchArrayF f Xs -> with [] Xs
+  {Ys [Y:@f @Xs] -> r [@Ys Y] Xs
+  ;Ys []         -> [Ys]}
+
+_matchDups Xs -> Xs,len==0 || all Xs,lhd Xs,ltl |> [Xs]
+
+parseInt [Xs:_++!digit?] -> asBase 10 Xs
+
+
+// FIXME: allow byte order choice
+m:defBasicType Sz ->
+  $@(do SS:[Sz++(gensym)]
+        #(do (setSizeof '$"s$Sz",asSym $Sz)
+             (setSizeof '$"s$Sz",asSym $Sz)
+             ($"s$Sz",asSym X ->
+                V:($"u$Sz",asSym X)
+                (and V $(1<<(Sz*8-1))) == 0
+                |> V :: ~(and (inv $(Sz*8) V-1) $(1<<(Sz*8)-1)))
+             ($"u$Sz",asSym [$@SS] ->
+               $(map ['`<<` ? ??*8] SS [0..Sz-1] | fold ['`+` ? ??]))
+             ($"as_s$Sz",asSym V ->
+                X:(V<0 |> and (inv $(Sz*8) ~V-1) $(1<<(Sz*8)-1) :: V)
+                $([0..Sz-1] | map N~>#(`%` X>>$(N*8) 256) | #[$@?]))
+             ($"as_u$Sz",asSym V ->  $"as_s$Sz",asSym V)
+             ))
+
+defBasicType 1
+defBasicType 2
+defBasicType 4
+defBasicType 8
+
+prnU1 X -> "$(X|asHex|fmt  ~2 0)"
+prnU2 X -> "$(X|asHex|fmt  ~4 0)"
+prnU4 X -> "$(X|asHex|fmt  ~8 0)"
+prnU8 X -> "$(X|asHex|fmt ~16 0)"
+
+
+// read|eval|say|loop
+

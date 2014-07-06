@@ -1,0 +1,547 @@
+p X = say X p:ø = X
+m:q @Xs = [“\\” Xs]
+m:l @Xs = \[$@Xs]
+m:e @Xs = \(= m $@Xs = ø)
+m:w N V = q cl (`return-from` $N @$V)
+   ;  V = q cl (`return-from` r @$V)
+m:h M @Xs X =q c (`.` $X $M) $@Xs
+f X F Xs = cl (fold X F Xs)
+g F [X@Xs] = cl (fold X F Xs)
+j Xs = g _conc Xs
+sf P Xs = {I: pos P Xs = del I Xs; Xs} //skip first P
+i Xs = N:0 = m <X = R:[X N] = cl (incf N) = R> Xs
+
+
+hash? X = {cl (`hash-table-p` X) = X}
+hash X = cl (hash X)
+unhash X = cl (unhash X)
+
+m0 F Xs = Xs|m:[K V] [(F K) V] // used to map keys in a sorted list
+m1 F Xs = Xs|m:[K V] [K (F V)] // used to map values in a sorted list
+
+fsym? X:sym? = {upcase? X,0 | n = X}
+
+// partition Xs by `P`
+div P Xs = F:ø = T:ø = Xs |e:X {P X = [@!T X]; [@!F X]} = [F T]
+
+m:u @Xs = R: s <[“:” A B]> Xs | g [\_merge ? ??]
+        = B: k <[“:” A B]> Xs | m ltl
+        = {S: k <[fsym? _]> B = !S: \[$@(sort by:lhd S | m:[K V] [“[]” [[“\\” K] [\do V]]])]
+                              = !R: {R=[\_merge R S]; S}}
+        = {S: s <[fsym? _]> B = !S: \(sort by:lhd [$@(S|m:[K V] [“[]” [K [\do V]]])])
+                              = !R: {R=[\_merge R S]; S}}
+        = R
+
+m:o @Xs = [V F]: div <[“:” <fsym?;[“\\” fsym?]> B]> Xs
+        = [P F]: div <[“:” fsym? B]> F
+        = !P | m <[“:” [“\\” V] B]=[“:” V B]>
+        = q _let ((Me ø) $@(l@P@F|m:[_ N _] [N ø]))
+              (do $@(l@P@F|m:[_ N V] [\set_l N V])
+                  (set_l Me (cl (hash @(u $@V $@(F|m:[_ N _] [“:” N N]))))))
+
+m:use @Xs \on @Ys = q $@Xs $Ys
+      ;@_ = error “use: missing `on` clause”
+
+m:a @A B = \{$B = $@A} // conjunction
+m:v @A B = \{&T:$B=&T; $@A} //disjunction
+
+all P [P@Xs] = r P Xs; P X = X,len,<0>
+any P Xs = Xs |c:[X@Xs] {X≥≤P={X;√}; Xs,r}
+//any P [X@Xs] = {X≥≤P = {X;√}; r P Xs}
+pos F Xs = N:0 = Xs |c:[X@Xs] {X≥≤F=N; √ = !N+1 = Xs,r}
+
+
+
+
+
+m:rng S I E = q _rng $S $I $E
+     ;S E = q _rng $S 1 $E
+     ;E = q _rng 0 1 $E
+
+m:with @Xs X =q $X $@Xs
+
+m:ptrEq A B =q (= &A:$A = &B:$B = cl (eq &A &B))
+
+abort = cl (cl.abort)
+tag X = cl (`get-type` X)
+
+sleep N = cl (sleep N)
+
+bound? X = cl (boundp X)
+
+prn X = cl (symta.prn X)
+
+
+m:aget I X = \(= &X:$X = &I:$I = cl (cl.aref &X &I))
+m:aset I V X = \(= &X:$X = &I:$I = &V:$V = cl (cl.setf (cl.aref &X &I) &V) = &X)
+m:acpy V = \(= &V:$V = cl (`copy-seq` &V))
+
+m:z X =q cl (let ((&X @$X)) (declare (fixnum &X)) &X)
+m:f4  X =q cl (let ((&X @$X)) (declare (`single-float` &X)) &X)
+m:f8  X =q cl (let ((&X @$X)) (declare (`double-float` &X)) &X)
+m:zs  X =q cl (let ((&X @$X)) (declare ((`simple-array` fixnum) &X)) &X)
+m:f4s X =q cl (let ((&X @$X)) (declare ((`simple-array` `single-float`) &X)) &X)
+m:f8s X =q cl (let ((&X @$X)) (declare ((`simple-array` `double-float`) &X)) &X)
+
+//(time ($eval "unsafe (for(I,i:0; I<100000000; !I+1) I+4)"))
+m:unsafe @Body =q cl (locally (declare (optimize (safety 0) (speed 3))) @$Body)
+
+// Usage: alias vlfn veryLongFunctionName
+m:alias A B =q (m:$A @Xs = \($$B $@Xs))
+
+dasm X = cl (disassemble X) = ø
+
+vec N I:{ø} = cl (`make-array` N `initial-element`:I)
+vec? X = cl (arrayp X)
+
+immediate? X = cl (and (imm? X) (not (`fn-sym?` X)))
+m:dup N @X = {X,len≤2 |a immediate? X,0 = \(vec $N I:$X,0); \(vec $N | m <&A=$@X>)}
+
+// usage: <X:(of q A B C) = say “$X is one of the first three letters”>
+//        <X:(of l sym? int?) = say “$X is symbol or integer”>
+m:of @B =q <&V = $@B |c:[&X@&Xs] {&V≥≤&X = &V |v √; r &Xs}>
+
+pass F Xs = F Xs = Xs
+filter F Xs = Xs | f ø <A B = {V:F B = l@A V; A}>
+has P [X:_:@P @_]=X; P [_@Xs] = r P Xs
+
+digits B N:pos? = l @(r B N%B) (mod N B)
+undigits B Xs = {g ?*B+?? Xs; 0}
+
+//insert `sep` between elements of a list `l`
+//Usage: infix “+” \(a b c)
+//Example: m ?,hex “LISP” | infix “ ” | j
+//TODO: add flag to create (`+` A (`+` B C)) like lists
+infix Sep [X@Xs] = f [X] [@? Sep ??] Xs
+
+cut P S Xs = d P Xs | t S
+
+flat X:xs? = m r X | j;  X=[X]
+
+subst Src Dst L = m <(Src)=Dst; X=X> L
+
+trim Xs S:{“ ”} I:{ø} L:{√} R:{√}
+  = Xs:Xs,str
+  = X: {V:L |a  (pos ?≤≥S Xs) = V; 0}
+  = Y: {V:R |a ~(pos ?≤≥S Xs,rev) = V; 0}
+  = {I = [@(t X Xs) @(t Y Xs)]; d X Xs | d Y} | sym
+
+// break list into piles of `n` items
+grp N [@Xs] =l (t N Xs) @(d N Xs | r N)
+
+// Example1: unfold <1=ø; X=[X-1 1]> 7
+// Example2: qsort Xs = Xs |
+//             unfold <[X]    = X
+//                    ;[X@Xs] =l (k ?≤X Xs) [X] (k ?≥X Xs)>
+unfold F O = F O | <ø=[O]; Xs = m (unfold F ?) Xs | j>
+
+// counts the number of ones in the bit representation of an integer
+// use it to calculate size of bitmasks
+bitCount X = cl (logcount X)
+
+// bit-length of an integer:  2^(log 2 ? | ceil)
+bitLen X = cl (`integer-length` X)
+
+// inverts `bits` bits in `value` (bitwise not)
+inv Bits Value = cl (logxor (ash 1 Bits)-1 Value)
+
+exp X = cl (cl.exp X)
+log Base X = cl (cl.log X Base)
+sin X = cl (cl.sin X)
+cos X = cl (cl.cos X)
+tan X = cl (cl.tan X)
+asin X = cl (cl.asin X)
+acos X = cl (cl.acos X)
+atan X = cl (cl.atan X)
+
+sum S = f 0 `+` S
+prod S = f 1 `*` S
+avg Xs = Xs,sum/Xs,len
+dot Xs Ys = cl (`dot-lists` Xs Ys)
+abs X = {num? X = cl (cl.abs X); cl (`dot-lists` X X) | sqrt}
+norm V = V/V,abs
+transpose X = rng X,0,len | m:I m ?,I X
+clip S E P = {P≤S=S; P≥E=E; √=P}
+clip2D [X Y W H] [PX PY] = [(clip X W PX) (clip Y H PY)]
+
+pick [@Xs] = cl (ind Xs (random (len Xs)))
+randRng S E = (abs E+1-S),rand+S
+//shuffle Xs = sort Xs by:<X=1.0,rand>
+//shuffle Xs:y = I:Xs,len,rand =l Xs,I @(shuffle ~@Xs,I)
+
+// convert list to set (an ordered list that does not have duplicated elements)
+uniq L = L,sort,<[@A X X @B]=[@A @[X @B],r]; E=E>
+
+// set operations
+union A B = A,<[X@Xs] = {any X B =    Xs,r ; [X@Xs,r]}; _=B>
+isect A B = A,<[X@Xs] = {any X B = [X@Xs,r];    Xs,r}>
+diff A B = union (s (any ? B) A) (s (any ? A) B)
+ss [X@Xs] = R:{Xs,ss;[ø]} =l @R @(m [X @?] R) //subset
+
+m:ldb Pos Size Value =q <P S V = cl (ldb (byte S P) V)> $Pos $Size $Value
+
+max A B = {A≤B=B;A}
+min A B = {A≤B=A;B}
+
+maxBy P [M@Xs] = p:P = S:M,p = Xs|e:X:NS:p {NS ≥ S = !M:X = !S:NS} = M
+minBy P [M@Xs] = p:P = S:M,p = Xs|e:X:NS:p {NS ≤ S = !M:X = !S:NS} = M
+
+m:while Test @Expr =q c <= {$Test = $Expr = r,c}>
+m:until Test @Expr =q while (n $Test) $@Expr
+m:loop Expr =q c <:&r = $Expr = &r>
+m:times N @B = q ($N),<&N:pos? = $@B = r &N-1>
+
+// for (I:0; I≤6; !I+1) say I
+m:for \($@V; $@C; $@I) @Body = \($@(V |m:X \(= $X) | j)
+                                 = cl (while @$C @$Body $@(m \@$? I)))
+     ; @X = error “for: invalid args=$X”
+
+// count number of P occurencies in Xs
+cnt P Xs = C:0 = Xs|e:(P) !C+1 = C
+
+// these will generate list of ascending/descending numbers
+asc Start = seq Start (asc Start+1)
+dsc Start = seq Start (dsc Start-1)
+
+// repeat sequence
+rep [@Xs] = N:Xs,len = 0,<I = seq Xs,(I%N) (r I+1)>
+
+seqMap F [X@Xs] = seq (F X) (seqMap F Xs)
+seqConc [A@As] Bs = seq A (seqConc As Bs)
+       ;  _    Bs = Bs
+seqAdd [A@As] [B@Bs] = seq A+B (seqAdd As Bs)
+
+
+split Sep Xs = Xs,<[@X (Sep) @Xs]=[X@Xs,r];X=[X]>
+unsplit Sep Xs = g [@? @Sep @??] Xs
+//[path name extension]
+pne P = split “/” P | <[@P [@N“.”@E]]=[P N E]; [@P N]=[P N ø]; P=[P ø ø]>
+unpne [P N E] = “${P = infix “/” [@P ø] | j}$N${E=“.$E”}”
+words S = subst “\n” “ ” S,str | split “ ” | s n | m sym
+lines S = split “\n” S,str
+flines Name = read Name | split “\n”,int | m utf8
+
+
+
+m:pop L = \(= &R: lhd $L = ltl !$L = &R)
+
+ul [X @Xs] = shl Xs,r 8 | or X; _=0
+um Xs = rev Xs | ul
+sl X = V:X,ul = B: shl X,len 3 = S: shl 1 B-1
+     = {V |a ptrEq (and V S) 0 = V; ~(and (inv B V-1) S-1)}
+sm X = V:X,um = B: shl X,len 3 = S: shl 1 B-1
+     = {V |a ptrEq (and V S) 0 = V; ~(and (inv B V-1) S-1)}
+
+fmtU N X = fmt ~2*N 0 X,hex
+
+lsb S V = V:{V≤0 = B:Sz*8 = and (inv B ~V-1) (shl 1 B)-1; V}
+        = rng 0 S | m:N and #FF (shr V N*8)
+
+msb S V = V:{V≤0 = B:Sz*8 = and (inv B ~V-1) (shl 1 B)-1; V}
+        = rng S 0 | m:N and #FF (shr V N*8)
+
+inRect [RX RY RW RH] [X Y] = inRng RX RX+RW X |a inRng RY RY+RH Y
+rectsIsect [AX AY AW AH] [BX BY BW BH] = AX≤BX+BW |a AY≤BY+BH |a BX≤AX+AW |a BY≤AY+AH
+
+makeBytes N = cl (`make-array` N `element-type`:\(`unsigned-byte` 8))
+makeInts N = cl (`make-array` N `element-type`:\fixnum)
+makeFlts N = cl (`make-array` N `element-type`:\`single-float`)
+
+file? X = {cl (`file-p` X) = X}
+dir? X = {cl (`folder-p` X) = X}
+
+get Path = cl (`load-file-bytes` Path)
+put Path Value = cl (`save-file-bytes` Path @(bytes Value))
+cfg P = get P | utf8 | split “\n” | m sexp | s <(all “ ” ?);ø>
+
+// Usage: ls | grep @_@“txt”
+m:grep @P Xs = \(k ?,<[$@P]=√> $Xs)
+
+// Usage: ls | sed @A@“txt”@B [@A @“test” @B]
+m:sed @P Expr Xs =q m ?,<[$@P]=$Expr; &X=&X> $Xs
+
+// math constants
+m:PI = cl cl.PI
+
+Colors = o
+  // variations of red
+  red        : #FF0000
+  medium_red : #7F0000
+  dark_red   : #3F0000
+  weak_red   : #FF7F7F
+
+  brown      : #964B00
+  dark_brown : #654321
+  weak_brown : #987654
+
+  // variations of green
+  green        : #00FF00
+  medium_green : #007F00
+  dark_green   : #003F00
+  weak_green   : #7FFF7F
+
+  emerland : #50C878
+
+  // variations of blue
+  blue        : #0000FF
+  medium_blue : #00007F
+  dark_blue   : #00003F
+  weak_blue   : #7F7FFF
+
+  // variations of yellow
+  yellow     : #FFFF00
+  orange     : #FF7F00
+  chartreuse : #7FFF00
+  olive      : #7F7F00
+
+  // variations of cyan
+  cyan  : #00FFFF
+  azure : #007FFF
+  aqua  : #00FF7F // aka spring green
+  teal  : #007F7F
+
+  // variations of magenta
+  magent : #FF00FF
+  pink    : #FF007F // aka rose
+  violet  : #7F00FF
+  purple  : #7F007F
+
+  // variations of gray
+  black       : #000000
+  gray        : #7F7F7F
+  silver      : #C0C0C0
+  weak_silver : #C9C0BB
+  white       : #FFFFFF
+
+m:rgb @Xs = q cl (gfx.rgb $@(m [“@” ?] Xs))
+
+gfx W H C:{4} = G: cl (gfx.gfx W H C:C) =o _gfx?:√
+  g:<=G>
+  s_g:<NG = !G: NG = Me>
+  _prn:<= “gfx $(c w) $(c h)”> // will be used to serialize object during printing
+  w:<= cl (`gfx-w` G)>
+  h:<= cl (`gfx-h` G)>
+  chn:<= cl (`gfx-c` G)> // number of color channels
+  s_chn:<N = cl (`gfx-chn` G N) = Me>
+  d:<= cl (`gfx-d` G)> //data
+  p:<= cl (`gfx-m` G)> //palette
+  hs:<= cl (vector (`gfx-hs-x` G) (`gfx-hs-y` G))> //hot-spot
+  s_hs:<[X Y] = cl (progn (setf (`gfx-hs-x` G) X)
+                          (setf (`gfx-hs-y` G) Y))
+              = Me>
+  s_p:<V = cl (setf (`gfx-m` G) V) = Me>
+  get:<X Y = cl (`gfx-get` G X Y)>
+  put:<X Y C = cl (`gfx-set` G X Y C) = Me>
+  clear:<C:{0} = cl (`gfx-clear` G C) = Me>
+  margins:<= cl (`gfx-margins` G)>
+  avg:<= cl (`gfx-avg` G)>
+  line:<C SX SY DX DY = cl (`gfx-line` G C SX SY DX DY) = Me>
+  rect:<C X Y W H F:{ø} = cl (`gfx-rect` G C X Y W H FILL:F) = Me>
+  circle:<C X Y R F:{ø} = cl (`gfx-circle` G C X Y R FILL:F) = Me>
+  blit:<X Y S FX:{ø} FY:{ø} P:{ø}
+          = {F:S.proxy = F X Y Me
+            ;F:S.g = cl (`gfx-blit` G X Y @F,c FLIPX:FX FLIPY:FY MAP:P)
+            ;√ = error “gfx.blit: invalid source: $S”}
+          = Me>
+  cut:<X Y W H = O: gfx W H C:cl,(`gfx-c` G) = O.s_p p,c = OG:O'g
+               = cl (`gfx-blit` OG 0 0 G RECT:(vector X Y W H) CUT:√)
+               = O>
+  copy:<= cut 0 0 w,c h,c>
+  frames:<W H = rng w,c*h,c % (W*H) |m:N cut (mod N*W w,c) (N*W%w,c)*H W H>
+  render:<=Me>
+  
+gfx? X = {X,hash?._gfx? = X}
+
+gfxLoad S Format:{ø} = (gfx 1 1).s_g cl,(`gfx-load` S FORMAT:Format)
+gfxMake D S Format:{ø} = cl (`gfx-make` D @S'g FORMAT:Format) = ø
+
+// `F` recieves kb/mouse input and returns result gfx or 0 to exit
+sdl F R:{ø} = cl (sdl.show RESIZING:R @<I={G:F I = G'g}>)
+
+
+//= G: gfxLoad “tmp/test8.png” = sdl <I=G>
+//= G: gfx 640 480 = F:0 = S:4 = sdl <I = G.clear C:(rgb 0 0 (and !S+4 #FF))>
+//= G: gfx 640 480 = sdl <I = G'clear
+//                          = G.circle #0000FF 200 200 50 F:√
+//                          = G.rect #00FF00 200 200 80 80 F:√>
+
+
+snd File Volume:{1.0} Music:{ø}
+ = S: cl (sdl.`sound-play` File VOLUME:Volume MUSIC:Music)
+ =o playing?:<= cl (sdl.`sound-playing?` S)>
+    stop:<= cl (sdl.`sound-stop` S) = Me>
+    setVolume:<V = cl (sdl.`sound-set-volume` S V) = Me>
+
+
+
+Timers = 
+GUI = 
+setSkin N = !Skin:N = !SkinCache:ø = !ImgCache:ø = !FontCache:ø
+          = !FontTints: “$Skin/font/tints.txt” | cfg | sort | m:[N@C] [N (pad ~256 0 C | u4s)] | o
+
+font N = {FontCache.N
+         ;√ = CP:“ ”,int = File:“$Skin/font/$N.png” = G:File,gfxLoad
+            = [W H]:File,pne,<[P N E]=[P N \txt]>,unpne,get,utf8,sexp
+            = Cs: G.frames W H = Ms: Cs | m <C = [X Y W H]:C'margins = X+W>
+            = lineW:<L = L | m <C = I:C,int-CP = M:Ms,I = {I≥≤0=!M:W%2} = M+1> | sum>
+            = !FontCache.N: o _prn:<=“font \\$N”>
+              on:<Text Tint:{\white}
+                   = Ls:Text,lines = LW: m lineW Ls | maxBy y = o w:<=LW> h:<=H*Ls,len>
+                     proxy:<X Y G = B:G.blit = P:FontTints.Tint = CY:Y = Ls | e <L = CX:X
+                                    = L | e <C = I:C,int-CP = M:Ms,I = I,<0=!M:W%2>
+                                               = B CX CY Cs,I P:P = !CX:CX+M+1>
+                                    = !CY+H>>>
+            = r N}
+
+skin F = {SkinCache.F; gfxLoad “$Skin/$F.png” | <I = !SkinCache.F:I = I>}
+cursor F = F:“cursor/$F” = {SkinCache.F; C:F,skin = “$Skin/$F”,pne,<[P N E]=[P N \txt]>
+                                                  | unpne | get | utf8 | sexp | C.s_hs}
+timer I F = [@!Timers [I,flt (flt time,c+I) F]]
+ticker N F W = timer N <=F W> = W
+
+spacer W H = o render:<=u w:<=W> h:<=H> proxy:<X Y G=>>
+pic P = o render:<= {P,sym?=P,skin;P}> _prn:<=“pic $(prn P)”>
+tabs S T = o items:<={F:T.S.items=F,c}> modify:<N V=!T.N:V>
+             render:<=T.S'render> input:<E={F:T.S.input=F E}> tab:<=S> s_tab:<NS=!S:NS>
+             _prn:<=“tabs \\$S \\($(m ?,0 T))”> 
+canvas W H F = o s_data:<N=!F:N> render:<= o w:<=W> h:<=H> proxy:<X Y G = {F = F [X Y W H] G}> >
+
+bar P = BG: skin “bar/bg” = o
+  _prn:<=“bar $P”> s_data:<N = !P:clip 0 100 N>
+  render:<= o w:<=BG'w> h:<=BG'h> proxy:<X Y G = G.blit X Y BG = G.rect F:√ #347004 X+3 Y+3 152P%100 14> >
+
+text Text Size:{\small} Tint:{\white} = G:ø = <R = R.s_data Text = R> :: o
+  render:<=G> _prn:<=“text "$Text"”>
+  s_data:<V = !Text:“$V” = F:Size,font.on Text Tint:Tint = !G:(gfx F'w F'h).blit 0 0 F>
+
+button Text Fn S:{\normal} W:{\large} H:{\medium} = LS:ø = Bs:ø = O:ø
+ = reskin:<= !Bs: q normal over pressed disabled | sort
+           | m:N l N (skin “button/$H-$W-${N,<\over>=\normal;N}” | ?'copy
+                     | <G = P:N,<\pressed=2;_=0> = T:N,<<\pressed;\over>=\white;\disabled=\grey;_=\yellow>
+                          = F:H,font.on Text Tint:T = G.blit G'w%2-F'w%2+P G'h%2-F'h%2+P F>)>
+ = o render:<={Skin≤≥LS=reskin,c=!LS:Skin}=Bs.{S,<\normal>={O=\over;S}; S}>
+     input:<[\mice_over S P] = !O:S
+           ;[\mice_left y P] = S,<\normal=!S:\pressed>
+           ;[\mice_left n P] = S,<\pressed = {O=Fn,c} = !S:\normal>>
+     s_state:<NS=!S:NS> _prn:<=“button $Text”>
+     
+arrow D Fn S:{\normal} = o
+  render:<=skin “arrow/$D-$S”>
+  input:<[\mice_left y P] = S,<\normal=!S:\pressed = timer 1/4 <= S,<\pressed = Fn,c = √>> >
+        ;[\mice_left n P] = S,<\pressed=Fn,c=!S:\normal>>
+  _prn:<=“arrow\\$D S:\\$S”>
+
+litem Text W:{140} S:{\normal} = T:ø = Bs:ø
+ = R:o render:<OS:{ø}=Bs.{OS;S}> text:<=T>
+       s_text:<ø = !S:\disabled = r “ ”
+              ;Text:!T = !T:Text = T,<!“ ”=!S:\normal> = !Bs: q normal picked disabled | sort
+                       | m:N l N (skin “litem/$N” |h cut 0 0 W 18
+                                 | <G = C:N,<\picked=\white;\disabled=\grey;_=\yellow>
+                                      = F:“small”,font.on T Tint:C = G.blit 4 G'h%2-F'h%2+2 F>)>
+       s_state:<NS=!S:NS>
+       input:<[\mice_left y P] = !S:S,<\normal=\picked;\picked=\normal;X=X>>
+       _prn:<=“litem $T W:$W $S:\\$S”>
+ = R.s_text Text = R
+
+droplist Xs W:{140} = SZ:1 = O:ø = Pr:ø = H:18 = N:0 = D:ø = G:ø
+ = B: {Xs;[“ ”]} | m:T litem T W:W S:{Xs=\normal;\disabled} | box\v
+ = Is:B'items | m ?,1 = Is,N.s_state \picked
+ = o render:<= G,<n = !G: Is,N.render OS:{O=\picked;\normal} | ?'copy = !H:G'h
+                    = skin “arrow/down-normal” | G.blit W-19 0>
+             = {D = B'render; G}>
+     layer:<L={F:Pr.updItem = F <[X Y Z I:_:(ptrEq ? Me)]=!SZ:Z=[X Y L I]>}>
+     s_parent:<P = !Pr:P> value:<=Is,N.text>
+     input:<[\mice_over S P] = !O:S = !G:ø
+           ;[\mice_left y P] = {Xs = layer 999 = !D:√}
+           ;[\mice_move _ P] = {D = NN: clip 0 Xs,len-1 P,1%H
+                                  = Is,N.s_state \normal = !N:NN = Is,N.s_state \picked}
+           ;[\mice_left n P] = {Xs = layer SZ} = !D:ø = !G:ø>
+
+list Xs L:{5} W:{300} F:{<V=>} = O:ø = N:0 = LV:ø = B: dup {L;1} “ ” | m:T litem T W:W | box\v
+ = Is:B'items | m ?,1 = H:Is,0'render'h
+ = R:o render:B.render value:<=Xs,N> data:<=Xs> off:<=O>
+       s_off:<NO:!O = !O: clip 0 Xs,len-1 NO
+                    = rng 0 L | e <K = I:O+K = Is,K.s_text Xs,I = {I≥≤N = Is,K.s_state \picked}>>
+       s_data:<Ys = !Xs:Ys = !N:0 = !O:ø = s_off 0>
+       input:<[\mice_left y P] = NN: clip 0 Xs,len-1 P,1%H+O
+                               = {NN≤≥N = K:N-O = {K≥≥0 |a K≤≤L= Is,K.s_state \normal}
+                                        = !N:NN = F Xs,N = Is,(N-O).s_state \picked}>
+ = R.s_off 0 = {Xs = Is,0.s_state \picked} = F Xs,N = R
+
+box D Xs S:{0} = Rs:Xs|m:X [[0 0 1 1] X] = o items:<=Rs>
+ render:<= Hs: m ?'render Xs = !Rs:ø = W:0 = H:0
+         = D,<\v = !W: maxBy ?'w Hs | ?'w = !H: Hs | m ?'h | infix S | sum
+             ; _ = !H: maxBy ?'h Hs | ?'h = !W: Hs | m ?'w | infix S | sum>
+         = u w:<=W> h:<=H>
+             proxy:<X Y G = N:0 = m [? ??] Xs Hs
+                          | e <[B H] = P:D,<\v=[0 N];_=[N 0]> = G.blit @(P+[X Y]) H
+                                     = [@!Rs [[@P H'w H'h] B]] = !N+(S+D,<\v=H'h; _=H'w>)>>>
+ _prn:<=“box\\$D S:$S”>
+
+slider D Fn Size:{124} A:{1} V:{0} S:{\normal} = clip 0 100 !V = M:100 = LS:ø = K:ø = B:ø
+ = reskin:<= !K: skin “slider/knob” = !B: skin “slider/$D-normal”
+           = !B: B.cut 0 0 @D,<\v=[B'w Size];_=[Size B'h]> = OM:M = M:Size-D,<\v=K'h;_=K'w>
+           = !LS:Skin = !V:V*M%OM>
+ = R:o value:<=V*100%M>
+   render:<={Skin≤≥LS=reskin,c}=B'copy.blit @([1 1]+D,<\v=[0 V,int];_=[V,int 0]>)  K>
+   s_value:<NV = !NV:clip 0 100 NV = {NV≤≥value,c = !V:NV*M/100 = R:value,c = Fn R} = ø>
+   input:<[\mice_move _ P] = S,<\pressed = clip 0 M D,<\v=P,1;_=P,0> | <NV:!V = !V:NV = Fn value,c>>
+         ;[\mice_left y P] = S,<\normal=!S:\pressed>
+         ;[\mice_left n P] = S,<\pressed=!S:\normal>>
+   _prn:<=“slider\\$D Size:$Size”>
+ = {A = box D ::l (arrow D,<\v=\up;_=\left> <=R.s_value R'value-A>)
+                  R
+                  (arrow D,<\v=\down;_=\right> <=R.s_value R'value+A>)
+   ;√ = R}
+
+fileList Root F = fl:<R = Es:R,ls = Fs: k file? Es | m ?,pne,<[P N E]=“$N.$E”>
+                        = Ds: k dir? Es | m ?,pne,0,rhd | m “$?/”
+                        = [@R,<!“/”=[“../”]> @Ds @Fs]>
+                = Root,rhd,<!“/”=!Root:“$Root/”> = L:list L:9 F:<N=F “$Root$N”> Root,fl = LI:L.input
+                = !L.input:<[\double_left y P] = V:L'value,<“../”=Root,pne,<[P N E]=[P,rtl N E],unpne>
+                                                          ;V=“$Root$V”>
+                                               = {V,dir? = !Root:V = L.s_data V,fl}
+                           ;E = LI E>
+                = box\h ::l L (slider\v <N = L.s_off N*L'data,len%100>)
+
+dlg Xs W:{ø} H:{ø} = Rs:ø
+ = resort:<= !Rs: Xs | sort by:?,2 | m:[X Y Z T] [[X Y 0 0] T]> = c resort
+ = R:o items:<= Rs,rev>
+       updItem:<F = U:ø = !Xs | m:X {R: F X = !U:√ = R; X} = {U=resort,c} = Me>
+       render:<= OW:0 = OH:0 = Hs:ø = !Rs | m <[[X Y @_] T]
+                 = R:T'render = RW:R'w = RH:R'h = !OW:{W; max OW X+RW} = !OH:{W; max OH Y+RH}
+                 = [@!Hs [X Y R]] = [[X Y RW RH] T]>
+               = u w:<=OW> h:<=OH> proxy:<X Y G = Hs | e:[A B R] G.blit X+A Y+B R>>
+ = Xs | m ?,3 | e:X {F:X.s_parent = F R} = R
+
+gui D = M:[0 0] = C:\point = Exit:ø = FI:<E=ø> = FP:[0 0] = LI:<E=ø> = LCT:0
+      = Keys:ø = Pop:ø = G:gfx 1 1 = R:o
+ render:<= R:D'render = {F:R.proxy = {G'w≤≥R'w |v G'h≤≥R'h = !G: gfx R'w R'h}
+                                   = F 0 0 G = !R:G
+                        ;√ = !R:R'copy}
+         = C,cursor,<C:y = P:M-C'hs = R.blit @P C
+           = {FG:Pop |a Pop'render = R.blit @(P-[0 FG'h]) FG}
+           >
+         = {Exit=ø;R}>
+ itemAt:<M P W = {F:W.items = F,c | any:[R I] inRect R M
+                            | <[[X Y @_] I] = itemAt M-[X Y] P+[X Y] I; _=[P W]>
+                 ;√ = [P W]}>
+ exit:<R=!Exit:[R]> keys:<=Keys>
+ input:<Es = SGUI:GUI = !GUI:Me = T:time,c,flt = Ts:Timers = !Timers:ø
+           = !Ts | filter:[I N F] {T≤N=[I N F]; F,c=[I time,c,flt+I F]} = [@Ts @!Timers]
+           = [NP NW]: itemAt M [0 0] D = NI:{NW.input;<E=ø>} = !Pop:{F:NW.popup=F,c}
+           = !C: {F:NW.cursor=F,c} |v \point
+           = Es | e <[N S]
+             = {N,<\mice_move = !M:S = NI [N S S-NP] = √> |a n (ptrEq LI NI)
+                  = LI [\mice_over ø M] = !LI:NI = LI [\mice_over √ M]
+               ;N,<\mice_left;\mice_right> |a S
+                = {ptrEq FI NI = 
+                  ;√ = FI [\focus ø M-FP] = !FI:NI = !FP:NP
+                     = FI [\focus √ M-FP]}
+                = {T-LCT≤1/4 = FI [“double_$(d 5 N)” √ M-FP]} = !LCT:T}
+             = !Keys.N:S = FI [N S M-FP]>
+           = !GUI:SGUI = Me>
+ = sdl (R.input ? |h render) = Exit,0
+
+
+// StdIn'getLine,sexp|eval|say|loop
